@@ -70,23 +70,8 @@ def _batched_nms_vanilla(
 
 
 def remove_small_boxes(boxes: Tensor, min_size: float) -> Tensor:
-    """
-    Remove every box from ``boxes`` which contains at least one side length
-    that is smaller than ``min_size``.
-
-    .. note::
-        For sanitizing a :class:`~torchvision.tv_tensors.BoundingBoxes` object, consider using
-        the transform :func:`~torchvision.transforms.v2.SanitizeBoundingBoxes` instead.
-
-    Args:
-        boxes (Tensor[N, 4]): boxes in ``(x1, y1, x2, y2)`` format
-            with ``0 <= x1 < x2`` and ``0 <= y1 < y2``.
-        min_size (float): minimum size
-
-    Returns:
-        Tensor[K]: indices of the boxes that have both sides
-        larger than ``min_size``
-    """
+   
+   
     if not torch.jit.is_scripting() and not torch.jit.is_tracing():
         _log_api_usage_once(remove_small_boxes)
     ws, hs = boxes[:, 2] - boxes[:, 0], boxes[:, 3] - boxes[:, 1]
@@ -246,8 +231,7 @@ def _box_diou_iou(boxes1: Tensor, boxes2: Tensor, eps: float = 1e-7) -> Tuple[Te
     centers_distance_squared = (_upcast((x_p[:, None] - x_g[None, :])) ** 2) + (
         _upcast((y_p[:, None] - y_g[None, :])) ** 2
     )
-    # The distance IoU is the IoU penalized by a normalized
-    # distance between boxes' centers squared.
+  
     return iou - (centers_distance_squared / diagonal_distance_squared), iou
 
 
