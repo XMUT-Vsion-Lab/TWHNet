@@ -1,0 +1,121 @@
+import numpy as np
+from sklearn.cluster import KMeans
+
+def adaptive_nms_with_clustering(boxes, scores, heatmap, base_thresh, n_clusters):
+    """
+    boxes:      (N, 4) ndarray，每行 [x1, y1, x2, y2]
+    scores:     (N,)  ndarray，每个预测框的置信度
+    heatmap:    (H, W) ndarray，二值化后的热图（0/1）
+    base_thresh:float,   NMS 的最小 IoU 阈值 N
+    n_clusters: int,     聚类簇数 k
+    """
+    # Step 1: Generate candidate boxes (clusters)
+    clusters = generate_candidate_boxes(heatmap, n_clusters)
+
+    # Step 2: 计算每个候选框的“密度” D_c
+    densities = [calculate_density(c, boxes) for c in clusters]
+
+    # 按 score 从大到小排序
+    order = scores.argsort()[::-1]
+    keep = []
+
+    while order.size > 0:
+        i = order[0]
+        keep.append(i)
+        
+        # 当前选中框
+        cur_box = boxes[i]
+        # 删除当前框
+        order = order[1:]
+        
+        # 对剩余框应用自适应阈值
+        remaining = []
+        for j in order:
+            iou_val = iou(cur_box, boxes[j])
+            # 找到 j 所属最近的聚类，取其密度
+            idx_cluster = find_closest_cluster(boxes[j], clusters)
+            thresh = max(base_thresh, densities[idx_cluster])
+            if iou_val <= thresh:
+                remaining.append(j)
+        order = np.array(remaining, dtype=int)
+
+    return boxes[keep], scores[keep]
+
+
+def generate_candidate_boxes(heatmap, k):
+    """
+    对热图中所有为 1 的点做 KMeans 聚类，生成 k 个候选框
+    """
+    # 获取所有正样本点的坐标
+    ys, xs = np.where(heatmap > 0)
+    points = np.stack([xs, ys], axis=1)
+    if len(points) < k:
+        k = len(points)
+    kmeans = KMeans(n_clusters=k, random_state=0).fit(points)
+    clusters = []
+    for label in range(k):
+        pts = points[kmeans.labels_ == label]
+        x_min, y_min = pts.min(axis=0)
+        x_max, y_max = pts.max(axis=0)
+        clusters.append([x_min, y_min, x_max, y_max])
+    return np.array(clusters)  # (k,4)
+
+
+def calculate_density(cluster_box, boxes):
+    """
+    统计多少个预测框中心点落在 cluster_box 内，作为密度
+    """
+    x1, y1, x2, y2 = cluster_box
+    # 计算所有框中心
+    centers = (boxes[:, :2] + boxes[:, 2:]) / 2
+    inside = (centers[:, 0] >= x1) & (centers[:, 0] <= x2) & \
+             (centers[:, 1] >= y1) & (centers[:, 1] <= y2)
+    return int(np.sum(inside))
+
+
+def find_closest_cluster(box, clusters):
+    """
+    通过最小化框中心点到每个候选框中心点的距离，找到最近的簇索引
+    """
+    # 当前框中心
+    cx, cy = ((box[0]+box[2]) / 2, (box[1]+box[3]) / 2)
+    # 计算每个簇的中心
+    c_centers = np.stack([
+        (clusters[:, 0] + clusters[:, 2]) / 2,
+        (clusters[:, 1] + clusters[:, 3]) / 2
+    ], axis=1)
+    dists = np.linalg.norm(c_centers - np.array([cx, cy]), axis=1)
+    return int(np.argmin(dists))
+
+
+def iou(boxA, boxB):
+    """
+    计算两个框的 IoU
+    """
+    xA = max(boxA[0], boxB[0])
+    yA = max(boxA[1], boxB[1])
+    xB = min(boxA[2], boxB[2])
+    yB = min(boxA[3], boxB[3])
+    
+    interW = max(0, xB - xA)
+    interH = max(0, yB - yA)
+    interArea = interW * interH
+    
+    areaA = (boxA[2] - boxA[0]) * (boxA[3] - boxA[1])
+    areaB = (boxB[2] - boxB[0]) * (boxB[3] - boxB[1])
+    
+    unionArea = areaA + areaB - interArea
+    return interArea / unionArea if unionArea > 0 else 0.0
+
+
+# 示例用法
+if __name__ == "__main__":
+    # 假设 boxes、scores、heatmap 已经准备好
+    # boxes = np.array([[10,20,50,60], [12,22,48,58], ...])
+    # scores = np.array([0.9, 0.85, ...])
+    # heatmap = (模型输出热图 > 阈值).astype(int)
+    kept_boxes, kept_scores = adaptive_nms_with_clustering(
+        boxes, scores, heatmap, base_thresh=0.5, n_clusters=5
+    )
+    print("保留的框：", kept_boxes)
+    print("对应的分数：", kept_scores)
