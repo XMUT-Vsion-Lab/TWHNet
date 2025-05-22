@@ -1,0 +1,55 @@
+import torch
+import torch.nn as nn
+import numpy as np
+
+# Define stub modules for attention mechanisms since they're not explicitly defined
+class SAM(nn.Module):
+    def forward(self, x):
+        # stub: should return spatial attention weights
+        return x
+
+class CAM(nn.Module):
+    def forward(self, x):
+        # stub: should return channel attention weights
+        return x
+
+class CBAM(nn.Module):
+    def forward(self, x):
+        # stub: should return attention weights
+        return x
+
+# MWSF module
+class MWSF(nn.Module):
+    def __init__(self):
+        super(MWSF, self).__init__()
+        self.sam = SAM()
+        self.cam = CAM()
+        self.cbam = CBAM()
+        self.conv1x1_1 = nn.Conv2d(in_channels=64, out_channels=64, kernel_size=1)
+        self.conv1x1_2 = nn.Conv2d(in_channels=64, out_channels=64, kernel_size=1)
+        self.conv3x3 = nn.Conv2d(in_channels=128, out_channels=64, kernel_size=3, padding=1)
+        self.conv1x1_final = nn.Conv2d(in_channels=64, out_channels=64, kernel_size=1)
+
+    def forward(self, F_s, F_d, F_m):
+        W_s = self.sam(F_s)
+        W_d = self.cam(F_d)
+        W_m = self.cbam(F_m)
+
+        # Fusion Weight Matrix M (stub implementation)
+        M = (W_s + W_d + W_m) / 3
+
+        A_d = self.conv1x1_1(F_d)
+        A_s = self.conv1x1_2(F_s)
+
+        # Assuming softmax across appropriate dimension
+        A_d = torch.softmax(A_d, dim=1)
+        A_s = torch.softmax(A_s, dim=1)
+
+        # Reweighting features
+        F_s_prime = F_s * W_s
+        F_d_prime = F_d * W_d
+
+        Fusion = F_s_prime + F_d_prime
+        F_fused = self.conv3x3(Fusion)
+        F_fused = self.conv1x1_final(F_fused)
+        return F_fused
